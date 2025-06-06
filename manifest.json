@@ -1,11 +1,12 @@
 {
     "manifest_version": 3,
     "name": "Workana helper",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Verifica conversas no Workana e categoriza as mensagens.",
     "permissions": [
         "scripting",
-        "storage"
+        "storage",
+        "tabs"
     ],
     "host_permissions": [
         "*://*.workana.com/*"

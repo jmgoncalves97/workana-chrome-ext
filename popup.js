@@ -53,10 +53,6 @@ async function contentScriptLogic() {
      * @param {number} index - The index of the link in the list.
      */
     async function processSingleConversationLink(linkElement, index) {
-        const titleElement = linkElement.querySelector('p.ellipsis');
-        const conversationTitle = titleElement ? titleElement.innerText : `Conversa ${index + 1} (título não encontrado)`;
-        const conversationHref = linkElement.href;
-
         try {
             linkElement.click();
         } catch (e) {
@@ -64,13 +60,17 @@ async function contentScriptLogic() {
             return; // Skip this link if click fails
         }
 
+        await sleep(1000); // Wait for content to potentially load
+
+        const titleElement = linkElement.querySelector('p.ellipsis');
+        const conversationTitle = titleElement ? titleElement.innerText : `Conversa ${index + 1} (título não encontrado)`;
+        const conversationHref = linkElement.href;
+
         // Ensure the element is still in the DOM and clickable.
         if (!document.body.contains(linkElement)) {
             console.warn(`Workana Helper: Link para "${conversationTitle}" não está mais no documento. Pulando. Isso pode acontecer se a estrutura da página mudar significativamente após cliques.`);
             return; // Skip to the next link
         }
-
-        await sleep(1000); // Wait for content to potentially load
 
         const messageItems = document.querySelectorAll('#container ul li.message-last');
         if (messageItems.length > 0) {
@@ -90,7 +90,11 @@ async function contentScriptLogic() {
 
     for (let i = 0; i < conversationLinkElements.length; i++) {
         const linkElement = conversationLinkElements[i];
-        await processSingleConversationLink(linkElement, i);
+        try {
+            await processSingleConversationLink(linkElement, i);
+        } catch (error) {
+            console.error(`Workana Helper: Erro ao processar a conversa ${i + 1}:`, error);
+        }
         // CRITICAL NOTE: If linkElement.click() caused navigation, the script's context might be lost.
         // This loop's continuation implies dynamic content updates (SPA) or persistent conversation list.
     }
@@ -209,9 +213,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 countLidasEl.textContent = data.counts.lidas;
                 countNaoLidasEl.textContent = data.counts.naoLidas;
 
-                // Pass null for tabId as we don't want to navigate from here, just display
-                populateList(listRespondidasEl, data.respondidasPeloCliente, null, "Nenhuma conversa respondida pelo cliente.");
-                populateList(listLidasEl, data.lidasPeloCliente, null, "Nenhuma conversa lida pelo cliente.");
+                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                    const tabId = tabs[0]?.id || null;
+
+                    populateList(listRespondidasEl, data.respondidasPeloCliente, tabId, "Nenhuma conversa respondida pelo cliente.");
+                    populateList(listLidasEl, data.lidasPeloCliente, tabId, "Nenhuma conversa lida pelo cliente.");
+                });
             }
         });
     };
