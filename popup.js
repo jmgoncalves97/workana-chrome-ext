@@ -137,42 +137,128 @@ document.addEventListener('DOMContentLoaded', () => {
         countNaoLidasEl.textContent = '0';
     }
 
-    /**
-     * Populates a <ul> element with list items.
-     * @param {HTMLUListElement} ulElement - The <ul> element to populate.
-     * @param {Array<{title: string, href: string}>} items - Array of items to display.
-     * @param {number | null} tabId - The ID of the current tab for navigation, or null if navigation is not needed.
-     * @param {string} emptyMessage - Message to display if items array is empty.
-     */
-    function populateList(ulElement, items, tabId, emptyMessage) {
-        ulElement.innerHTML = ''; // Clear previous items
-        if (!items || items.length === 0) {
-            const li = document.createElement('li');
-            li.textContent = emptyMessage;
-            li.style.cursor = 'default';
-            li.style.color = '#777';
-            li.style.fontStyle = 'italic';
-            li.classList.add('no-items');
-            ulElement.appendChild(li);
-            return;
-        }
-        items.forEach(item => {
-            const li = document.createElement('li');
-            li.textContent = item.title;
-            li.title = `Clique para ir para: ${item.title}`;
-            li.dataset.href = item.href;
+/**
+ * Configuration for item statuses.
+ */
+const STATUSES = {
+    'pre-selecionado': { text: 'PRÉ-SELECIONADO', color: '#007bff' },
+    'selecionado': { text: 'SELECIONADO', color: '#28a745' },
+    'executando': { text: 'EXECUTANDO', color: '#ffc107' }
+};
 
-            li.addEventListener('click', () => {
-                if (item.href && tabId !== null) {
-                    chrome.tabs.update(tabId, { url: item.href });
-                    window.close(); // Close the popup after clicking
-                } else if (!item.href) {
-                    console.warn("Workana Helper: Tentativa de navegar para um href indefinido.", item);
-                }
-            });
-            ulElement.appendChild(li);
-        });
+/**
+ * Creates and configures a <select> element for statuses.
+ * @param {object} item - The item object, which may contain a 'status' property.
+ * @returns {HTMLSelectElement} The configured <select> element.
+ */
+function createStatusSelect(item) {
+    const select = document.createElement('select');
+    select.className = 'status-select';
+    select.addEventListener('click', (e) => e.stopPropagation());
+
+    const defaultOption = document.createElement('option');
+    defaultOption.textContent = 'NO STATUS';
+    defaultOption.value = '';
+    select.appendChild(defaultOption);
+
+    for (const key in STATUSES) {
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = STATUSES[key].text;
+        select.appendChild(option);
     }
+
+    if (item.status && STATUSES[item.status]) {
+        select.value = item.status;
+        select.style.backgroundColor = STATUSES[item.status].color;
+        select.style.color = '#fff';
+        select.style.borderColor = STATUSES[item.status].color;
+    } else {
+        select.value = '';
+        select.style.backgroundColor = '#ccc';
+        select.style.color = '#fff';
+        select.style.borderColor = '#ccc';
+    }
+
+    select.addEventListener('change', (event) => {
+        const newStatus = event.target.value;
+        const storageKey = `wh_status_${item.href}`; // Unique key for the item
+
+        if (newStatus) {
+            chrome.storage.local.set({ [storageKey]: newStatus });
+            select.style.backgroundColor = STATUSES[newStatus].color;
+            select.style.color = '#fff';
+            select.style.borderColor = STATUSES[newStatus].color;
+        } else {
+            chrome.storage.local.remove(storageKey);
+            select.style.backgroundColor = '#ccc';
+            select.style.color = '#fff';
+            select.style.borderColor = '#ccc';
+        }
+
+        console.log(`Workana Helper: Status saved for '${item.title}' -> '${newStatus || 'None'}'`);
+    });
+
+    return select;
+}
+
+/**
+ * Populates a <ul> element with list items, loading statuses from chrome.storage.local.
+ * @param {HTMLUListElement} ulElement - The <ul> element to populate.
+ * @param {Array<{title: string, href: string, status?: string}>} items - Array of items.
+ * @param {number | null} tabId - The ID of the current tab for navigation, or null if not needed.
+ * @param {string} emptyMessage - Message to display if the items array is empty.
+ */
+function populateList(ulElement, items, tabId, emptyMessage) {
+    ulElement.innerHTML = '';
+    if (!items || items.length === 0) {
+        const li = document.createElement('li');
+        li.textContent = emptyMessage;
+        li.style.cursor = 'default';
+        li.style.color = '#777';
+        li.style.fontStyle = 'italic';
+        li.classList.add('no-items');
+        ulElement.appendChild(li);
+        return;
+    }
+
+    items.forEach(async item => {
+        const storageKey = `wh_status_${item.href}`;
+        const savedStatus = await chrome.storage.local.get(storageKey);
+
+        if (savedStatus) {
+            item.status = Object.values(savedStatus)[0];
+        }
+
+        const li = document.createElement('li');
+        li.title = `Click to navigate to: ${item.title}`;
+        li.dataset.href = item.href;
+
+        const contentWrapper = document.createElement('div');
+        contentWrapper.className = 'item-content';
+
+        const titleElement = document.createElement('span');
+        titleElement.className = 'item-title';
+        titleElement.textContent = item.title;
+
+        const statusSelect = createStatusSelect(item);
+
+        contentWrapper.appendChild(titleElement);
+        contentWrapper.appendChild(statusSelect);
+
+        li.appendChild(contentWrapper);
+
+        li.addEventListener('click', () => {
+            if (item.href && tabId !== null) {
+                chrome.tabs.update(tabId, { url: item.href });
+                window.close();
+            } else if (!item.href) {
+                console.warn("Workana Helper: Attempted to navigate to an undefined href.", item);
+            }
+        });
+        ulElement.appendChild(li);
+    });
+}
 
     /**
      * Updates the UI with the data received from the content script.
